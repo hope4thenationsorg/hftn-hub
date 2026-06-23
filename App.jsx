@@ -3,10 +3,11 @@ import { loadEntry, saveEntry, loadAllForMonth, getMonthsWithData } from "./supa
 
 const HOUSES = [
   "Joshua House",
-  "Embo Kids",
-  "House of Hope",
-  "House of Grace",
+  "Esther House",
+  "OCTO",
   "Ukraine",
+  "EMBO Kids",
+  "House of Hope",
 ];
 
 const MONTHS = [
