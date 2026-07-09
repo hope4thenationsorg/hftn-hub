@@ -1,5 +1,8 @@
 import { useState, useEffect, useRef } from "react";
-import { loadEntry, saveEntry, loadAllForMonth, getMonthsWithData } from "./supabase.js";
+import {
+  loadEntry, saveEntry, loadAllForMonth, getMonthsWithData,
+  loadNeeds, addNeed, updateNeed, deleteNeed,
+} from "./supabase.js";
 
 const HOUSES = [
   "Joshua House",
@@ -92,8 +95,8 @@ const css = `
   .card-title{font-family:'Playfair Display',serif;font-size:15px;color:${C.navy};margin-bottom:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
   .card-title span{font-size:11px;font-family:'Inter',sans-serif;font-weight:500;color:${C.muted};letter-spacing:.04em;text-transform:uppercase}
   label{display:block;font-size:12px;font-weight:600;color:${C.muted};text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px;margin-top:14px}
-  textarea,input[type=text]{width:100%;border:1px solid ${C.border};border-radius:7px;padding:9px 12px;font-size:13.5px;font-family:'Inter',sans-serif;color:${C.text};background:${C.cream};resize:vertical;transition:border .15s}
-  textarea:focus,input[type=text]:focus{outline:none;border-color:${C.gold};background:${C.white}}
+  textarea,input[type=text],input[type=number],select{width:100%;border:1px solid ${C.border};border-radius:7px;padding:9px 12px;font-size:13.5px;font-family:'Inter',sans-serif;color:${C.text};background:${C.cream};resize:vertical;transition:border .15s}
+  textarea:focus,input[type=text]:focus,input[type=number]:focus,select:focus{outline:none;border-color:${C.gold};background:${C.white}}
   textarea{min-height:90px}
   .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;border:none;transition:all .15s}
   .btn-primary{background:${C.gold};color:${C.white}}
@@ -102,6 +105,8 @@ const css = `
   .btn-secondary:hover{border-color:${C.gold};color:${C.gold}}
   .btn-teal{background:${C.teal};color:${C.white}}
   .btn-teal:hover{background:#2e6159}
+  .btn-danger{background:${C.white};border:1px solid ${C.danger};color:${C.danger}}
+  .btn-danger:hover{background:${C.danger};color:${C.white}}
   .btn-sm{padding:5px 11px;font-size:12px}
   .btn:disabled{opacity:.5;cursor:not-allowed}
   .output-box{background:${C.teallt};border:1px solid #B2D8D2;border-radius:8px;padding:14px 16px;font-size:13.5px;line-height:1.7;white-space:pre-wrap;margin-top:14px;color:${C.text}}
@@ -114,6 +119,9 @@ const css = `
   .empty-icon{font-size:38px;margin-bottom:10px}
   .tag{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:600;background:${C.warm};color:${C.muted};border:1px solid ${C.border}}
   .tag.filled{background:${C.teallt};color:${C.teal};border-color:#B2D8D2}
+  .tag.open{background:#FBEAEA;color:${C.danger};border-color:#F0C7C7}
+  .tag.partial{background:#FCF3E3;color:#A9761F;border-color:${C.goldlt}}
+  .tag.fulfilled{background:${C.teallt};color:${C.teal};border-color:#B2D8D2}
   .nl-section{margin-bottom:28px}
   .nl-house{font-family:'Playfair Display',serif;font-size:17px;color:${C.navy};border-bottom:2px solid ${C.goldlt};padding-bottom:6px;margin-bottom:10px}
   .nl-entry{font-size:13.5px;line-height:1.7;color:${C.text};margin-bottom:8px}
@@ -126,6 +134,23 @@ const css = `
   .copy-flash.show{opacity:1}
   .status-bar{background:${C.warm};border-top:1px solid ${C.border};padding:6px 28px;font-size:12px;color:${C.muted};text-align:right}
   .author-tag{font-size:11px;color:${C.muted};font-style:italic}
+  .need-card{border:1px solid ${C.border};border-radius:9px;padding:14px 16px;margin-bottom:12px;background:${C.white}}
+  .need-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap}
+  .need-house{font-size:11px;font-weight:700;color:${C.gold};text-transform:uppercase;letter-spacing:.06em}
+  .need-desc{font-size:14px;color:${C.text};margin-top:3px;font-weight:600}
+  .need-meta{font-size:11.5px;color:${C.muted};margin-top:3px}
+  .progress-track{width:100%;height:8px;border-radius:5px;background:${C.warm};margin-top:10px;overflow:hidden}
+  .progress-fill{height:100%;background:${C.teal};border-radius:5px;transition:width .3s}
+  .progress-fill.open{background:${C.danger}}
+  .progress-fill.partial{background:${C.gold}}
+  .need-amounts{display:flex;justify-content:space-between;font-size:12px;color:${C.muted};margin-top:5px}
+  .needs-summary{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:18px}
+  .summary-stat{background:${C.white};border:1px solid ${C.border};border-radius:9px;padding:12px 18px;min-width:140px}
+  .summary-stat-label{font-size:10.5px;color:${C.muted};text-transform:uppercase;letter-spacing:.06em;font-weight:600}
+  .summary-stat-value{font-size:20px;color:${C.navy};font-family:'Playfair Display',serif;font-weight:700;margin-top:2px}
+  .filter-row{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+  .inline-edit{display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap}
+  .inline-edit input{width:110px}
 `;
 
 export default function App() {
@@ -151,6 +176,18 @@ export default function App() {
   const [author, setAuthor] = useState("");
   const [photos, setPhotos] = useState([]);
 
+  // ── Needs Tracker state ──────────────────────────────────────────────────
+  const [needs, setNeeds] = useState([]);
+  const [needsLoading, setNeedsLoading] = useState(false);
+  const [needsFilterHouse, setNeedsFilterHouse] = useState("All");
+  const [needsFilterStatus, setNeedsFilterStatus] = useState("All");
+  const [newNeed, setNewNeed] = useState({
+    house: HOUSES[0], description: "", amount_needed: "", amount_raised: "0", source: "",
+  });
+  const [addingNeed, setAddingNeed] = useState(false);
+  const [editingRaisedId, setEditingRaisedId] = useState(null);
+  const [editingRaisedValue, setEditingRaisedValue] = useState("");
+
   useEffect(() => {
     setNlOutput(""); setSmOutput("");
     loadCurrentEntry();
@@ -160,6 +197,10 @@ export default function App() {
   useEffect(() => {
     if (activeTab === "newsletter") loadAllForNewsletter();
   }, [activeTab, selectedYear, selectedMonth]);
+
+  useEffect(() => {
+    if (activeTab === "needs") loadNeedsList();
+  }, [activeTab]);
 
   async function loadCurrentEntry() {
     setLoadingEntry(true);
@@ -272,6 +313,68 @@ Keep both faith-centered and uplifting. No em dashes. No repeated phrases betwee
     setTimeout(() => setCopyFlash(""), 2000);
   }
 
+  // ── Needs Tracker handlers ───────────────────────────────────────────────
+  async function loadNeedsList() {
+    setNeedsLoading(true);
+    const data = await loadNeeds();
+    setNeeds(data);
+    setNeedsLoading(false);
+  }
+
+  async function handleAddNeed() {
+    if (!newNeed.description || !newNeed.amount_needed) return;
+    setAddingNeed(true);
+    const ok = await addNeed({
+      house: newNeed.house,
+      description: newNeed.description,
+      amount_needed: Number(newNeed.amount_needed) || 0,
+      amount_raised: Number(newNeed.amount_raised) || 0,
+      source: newNeed.source || null,
+    });
+    if (ok) {
+      setNewNeed({ house: HOUSES[0], description: "", amount_needed: "", amount_raised: "0", source: "" });
+      setStatusMsg("✓ Need added");
+      setTimeout(() => setStatusMsg(""), 2500);
+      loadNeedsList();
+    } else {
+      setStatusMsg("Could not add need. Check your connection.");
+      setTimeout(() => setStatusMsg(""), 3500);
+    }
+    setAddingNeed(false);
+  }
+
+  function startEditRaised(need) {
+    setEditingRaisedId(need.id);
+    setEditingRaisedValue(String(need.amount_raised));
+  }
+
+  async function saveEditRaised(need) {
+    const ok = await updateNeed(need.id, {
+      house: need.house,
+      description: need.description,
+      amount_needed: need.amount_needed,
+      amount_raised: Number(editingRaisedValue) || 0,
+      source: need.source,
+    });
+    setEditingRaisedId(null);
+    if (ok) loadNeedsList();
+  }
+
+  async function handleDeleteNeed(id) {
+    const ok = await deleteNeed(id);
+    if (ok) loadNeedsList();
+  }
+
+  const filteredNeeds = needs.filter(n => {
+    if (needsFilterHouse !== "All" && n.house !== needsFilterHouse) return false;
+    if (needsFilterStatus !== "All" && n.status !== needsFilterStatus) return false;
+    return true;
+  });
+
+  const totalNeeded = needs.reduce((s, n) => s + Number(n.amount_needed || 0), 0);
+  const totalRaised = needs.reduce((s, n) => s + Number(n.amount_raised || 0), 0);
+  const openCount = needs.filter(n => n.status !== "fulfilled").length;
+
   return (
     <>
       <style>{css}</style>
@@ -288,7 +391,7 @@ Keep both faith-centered and uplifting. No em dashes. No repeated phrases betwee
           <div className="sidebar">
             <div className="sidebar-section">Our Homes</div>
             {HOUSES.map(h => (
-              <div key={h} className={`sidebar-item ${activeHouse === h && activeTab !== "newsletter" ? "active" : ""}`}
+              <div key={h} className={`sidebar-item ${activeHouse === h && activeTab !== "newsletter" && activeTab !== "needs" ? "active" : ""}`}
                 onClick={() => { setActiveHouse(h); setActiveTab("log"); }}>
                 🏠 {h}
               </div>
@@ -299,10 +402,14 @@ Keep both faith-centered and uplifting. No em dashes. No repeated phrases betwee
               onClick={() => setActiveTab("newsletter")}>
               📰 Newsletter
             </div>
+            <div className={`sidebar-item ${activeTab === "needs" ? "active" : ""}`}
+              onClick={() => setActiveTab("needs")}>
+              💰 Needs Tracker
+            </div>
           </div>
 
           <div className="main">
-            {activeTab !== "newsletter" && (
+            {activeTab !== "newsletter" && activeTab !== "needs" && (
               <>
                 <div className="year-nav">
                   <button className="year-arrow" onClick={() => setSelectedYear(y => y - 1)}>‹</button>
@@ -507,6 +614,129 @@ Keep both faith-centered and uplifting. No em dashes. No repeated phrases betwee
                 </div>
               </div>
             )}
+
+            {/* NEEDS TRACKER TAB */}
+            {activeTab === "needs" && (
+              <div>
+                <div className="card-title" style={{marginBottom:16}}>💰 Needs Tracker <span>· all houses, all time</span></div>
+
+                <div className="needs-summary">
+                  <div className="summary-stat">
+                    <div className="summary-stat-label">Total Needed</div>
+                    <div className="summary-stat-value">${totalNeeded.toLocaleString()}</div>
+                  </div>
+                  <div className="summary-stat">
+                    <div className="summary-stat-label">Total Raised</div>
+                    <div className="summary-stat-value">${totalRaised.toLocaleString()}</div>
+                  </div>
+                  <div className="summary-stat">
+                    <div className="summary-stat-label">Still Open</div>
+                    <div className="summary-stat-value">{openCount}</div>
+                  </div>
+                </div>
+
+                <div className="card">
+                  <div className="card-title">Add a Need</div>
+                  <label>House</label>
+                  <select value={newNeed.house} onChange={e => setNewNeed({...newNeed, house: e.target.value})}>
+                    {HOUSES.map(h => <option key={h} value={h}>{h}</option>)}
+                  </select>
+
+                  <label>Description</label>
+                  <input type="text" placeholder="e.g. Bricks, brickforce, river sand and cement to window level"
+                    value={newNeed.description} onChange={e => setNewNeed({...newNeed, description: e.target.value})} />
+
+                  <div style={{display:"flex",gap:14,flexWrap:"wrap"}}>
+                    <div style={{flex:"1 1 140px"}}>
+                      <label>Amount Needed ($)</label>
+                      <input type="number" placeholder="3000" value={newNeed.amount_needed}
+                        onChange={e => setNewNeed({...newNeed, amount_needed: e.target.value})} />
+                    </div>
+                    <div style={{flex:"1 1 140px"}}>
+                      <label>Amount Already Raised ($)</label>
+                      <input type="number" placeholder="0" value={newNeed.amount_raised}
+                        onChange={e => setNewNeed({...newNeed, amount_raised: e.target.value})} />
+                    </div>
+                  </div>
+
+                  <label>Source (optional)</label>
+                  <input type="text" placeholder="e.g. WhatsApp update, June 2026"
+                    value={newNeed.source} onChange={e => setNewNeed({...newNeed, source: e.target.value})} />
+
+                  <div style={{marginTop:16}}>
+                    <button className="btn btn-primary" onClick={handleAddNeed} disabled={addingNeed || !newNeed.description || !newNeed.amount_needed}>
+                      {addingNeed ? "Adding..." : "+ Add Need"}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="filter-row">
+                  <select style={{width:"auto"}} value={needsFilterHouse} onChange={e => setNeedsFilterHouse(e.target.value)}>
+                    <option value="All">All Houses</option>
+                    {HOUSES.map(h => <option key={h} value={h}>{h}</option>)}
+                  </select>
+                  <select style={{width:"auto"}} value={needsFilterStatus} onChange={e => setNeedsFilterStatus(e.target.value)}>
+                    <option value="All">All Statuses</option>
+                    <option value="open">Open</option>
+                    <option value="partial">Partially Funded</option>
+                    <option value="fulfilled">Fulfilled</option>
+                  </select>
+                </div>
+
+                {needsLoading ? (
+                  <div className="loading"><div className="dot"/><div className="dot"/><div className="dot"/> Loading needs...</div>
+                ) : filteredNeeds.length === 0 ? (
+                  <div className="empty">
+                    <div className="empty-icon">💰</div>
+                    No needs logged yet{needsFilterHouse !== "All" ? ` for ${needsFilterHouse}` : ""}.
+                  </div>
+                ) : (
+                  filteredNeeds.map(n => {
+                    const pct = n.amount_needed > 0 ? Math.min(100, Math.round((n.amount_raised / n.amount_needed) * 100)) : 0;
+                    return (
+                      <div key={n.id} className="need-card">
+                        <div className="need-top">
+                          <div>
+                            <div className="need-house">{n.house}</div>
+                            <div className="need-desc">{n.description}</div>
+                            <div className="need-meta">
+                              Logged {new Date(n.date_logged).toLocaleDateString()}
+                              {n.source ? ` · ${n.source}` : ""}
+                            </div>
+                          </div>
+                          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                            <span className={`tag ${n.status}`}>
+                              {n.status === "fulfilled" ? "Fulfilled" : n.status === "partial" ? "Partially Funded" : "Open"}
+                            </span>
+                            <button className="btn btn-danger btn-sm" onClick={() => handleDeleteNeed(n.id)}>Delete</button>
+                          </div>
+                        </div>
+
+                        <div className="progress-track">
+                          <div className={`progress-fill ${n.status}`} style={{width: `${pct}%`}} />
+                        </div>
+                        <div className="need-amounts">
+                          <span>${Number(n.amount_raised).toLocaleString()} raised of ${Number(n.amount_needed).toLocaleString()}</span>
+                          <span>{pct}%</span>
+                        </div>
+
+                        {editingRaisedId === n.id ? (
+                          <div className="inline-edit">
+                            <input type="number" value={editingRaisedValue} onChange={e => setEditingRaisedValue(e.target.value)} />
+                            <button className="btn btn-teal btn-sm" onClick={() => saveEditRaised(n)}>Save</button>
+                            <button className="btn btn-secondary btn-sm" onClick={() => setEditingRaisedId(null)}>Cancel</button>
+                          </div>
+                        ) : (
+                          <div style={{marginTop:10}}>
+                            <button className="btn btn-secondary btn-sm" onClick={() => startEditRaised(n)}>Update Amount Raised</button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            )}
           </div>
         </div>
         {statusMsg && <div className="status-bar">{statusMsg}</div>}
@@ -514,3 +744,4 @@ Keep both faith-centered and uplifting. No em dashes. No repeated phrases betwee
     </>
   );
 }
+
