@@ -181,12 +181,16 @@ export default function App() {
   const [needsLoading, setNeedsLoading] = useState(false);
   const [needsFilterHouse, setNeedsFilterHouse] = useState("All");
   const [needsFilterStatus, setNeedsFilterStatus] = useState("All");
+  const [needsYear, setNeedsYear] = useState(CURRENT_YEAR);
+  const [needsMonth, setNeedsMonth] = useState(-1); // -1 = All months
+  const [collapsedHouses, setCollapsedHouses] = useState({});
   const [newNeed, setNewNeed] = useState({
     house: HOUSES[0], description: "", amount_needed: "", amount_raised: "0", source: "",
   });
   const [addingNeed, setAddingNeed] = useState(false);
   const [editingRaisedId, setEditingRaisedId] = useState(null);
   const [editingRaisedValue, setEditingRaisedValue] = useState("");
+  const needDescRef = useRef();
 
   useEffect(() => {
     setNlOutput(""); setSmOutput("");
@@ -332,10 +336,13 @@ Keep both faith-centered and uplifting. No em dashes. No repeated phrases betwee
       source: newNeed.source || null,
     });
     if (ok) {
-      setNewNeed({ house: HOUSES[0], description: "", amount_needed: "", amount_raised: "0", source: "" });
+      // Keep the same house selected so logging several needs for one house in a row is fast —
+      // only the description/amount/source fields clear.
+      setNewNeed(prev => ({ house: prev.house, description: "", amount_needed: "", amount_raised: "0", source: "" }));
       setStatusMsg("✓ Need added");
       setTimeout(() => setStatusMsg(""), 2500);
       loadNeedsList();
+      needDescRef.current?.focus();
     } else {
       setStatusMsg("Could not add need. Check your connection.");
       setTimeout(() => setStatusMsg(""), 3500);
@@ -368,12 +375,24 @@ Keep both faith-centered and uplifting. No em dashes. No repeated phrases betwee
   const filteredNeeds = needs.filter(n => {
     if (needsFilterHouse !== "All" && n.house !== needsFilterHouse) return false;
     if (needsFilterStatus !== "All" && n.status !== needsFilterStatus) return false;
+    const logged = new Date(n.date_logged);
+    if (logged.getFullYear() !== needsYear) return false;
+    if (needsMonth !== -1 && logged.getMonth() !== needsMonth) return false;
     return true;
   });
 
-  const totalNeeded = needs.reduce((s, n) => s + Number(n.amount_needed || 0), 0);
-  const totalRaised = needs.reduce((s, n) => s + Number(n.amount_raised || 0), 0);
-  const openCount = needs.filter(n => n.status !== "fulfilled").length;
+  const groupedNeeds = HOUSES.map(h => ({
+    house: h,
+    items: filteredNeeds.filter(n => n.house === h),
+  })).filter(g => g.items.length > 0);
+
+  function toggleHouseCollapsed(house) {
+    setCollapsedHouses(prev => ({ ...prev, [house]: !prev[house] }));
+  }
+
+  const totalNeeded = filteredNeeds.reduce((s, n) => s + Number(n.amount_needed || 0), 0);
+  const totalRaised = filteredNeeds.reduce((s, n) => s + Number(n.amount_raised || 0), 0);
+  const openCount = filteredNeeds.filter(n => n.status !== "fulfilled").length;
 
   return (
     <>
@@ -618,7 +637,23 @@ Keep both faith-centered and uplifting. No em dashes. No repeated phrases betwee
             {/* NEEDS TRACKER TAB */}
             {activeTab === "needs" && (
               <div>
-                <div className="card-title" style={{marginBottom:16}}>💰 Needs Tracker <span>· all houses, all time</span></div>
+                <div className="card-title" style={{marginBottom:16}}>
+                  💰 Needs Tracker <span>· {needsMonth === -1 ? `all of ${needsYear}` : `${MONTHS[needsMonth]} ${needsYear}`}</span>
+                </div>
+
+                <div className="year-nav" style={{marginBottom:14}}>
+                  <button className="year-arrow" onClick={() => setNeedsYear(y => y - 1)}>‹</button>
+                  <span className="year-label">{needsYear}</span>
+                  <button className="year-arrow" onClick={() => setNeedsYear(y => y + 1)}>›</button>
+                </div>
+                <div className="month-row" style={{marginBottom:22}}>
+                  <button className={`month-btn ${needsMonth === -1 ? "active" : ""}`} onClick={() => setNeedsMonth(-1)}>All</button>
+                  {MONTHS.map((m, i) => (
+                    <button key={m} className={`month-btn ${needsMonth === i ? "active" : ""}`} onClick={() => setNeedsMonth(i)}>
+                      {m.slice(0, 3)}
+                    </button>
+                  ))}
+                </div>
 
                 <div className="needs-summary">
                   <div className="summary-stat">
@@ -643,7 +678,7 @@ Keep both faith-centered and uplifting. No em dashes. No repeated phrases betwee
                   </select>
 
                   <label>Description</label>
-                  <input type="text" placeholder="e.g. Bricks, brickforce, river sand and cement to window level"
+                  <input ref={needDescRef} type="text" placeholder="e.g. Bricks, brickforce, river sand and cement to window level"
                     value={newNeed.description} onChange={e => setNewNeed({...newNeed, description: e.target.value})} />
 
                   <div style={{display:"flex",gap:14,flexWrap:"wrap"}}>
@@ -685,52 +720,74 @@ Keep both faith-centered and uplifting. No em dashes. No repeated phrases betwee
 
                 {needsLoading ? (
                   <div className="loading"><div className="dot"/><div className="dot"/><div className="dot"/> Loading needs...</div>
-                ) : filteredNeeds.length === 0 ? (
+                ) : groupedNeeds.length === 0 ? (
                   <div className="empty">
                     <div className="empty-icon">💰</div>
-                    No needs logged yet{needsFilterHouse !== "All" ? ` for ${needsFilterHouse}` : ""}.
+                    No needs logged for this period{needsFilterHouse !== "All" ? ` for ${needsFilterHouse}` : ""}.
                   </div>
                 ) : (
-                  filteredNeeds.map(n => {
-                    const pct = n.amount_needed > 0 ? Math.min(100, Math.round((n.amount_raised / n.amount_needed) * 100)) : 0;
+                  groupedNeeds.map(group => {
+                    const isCollapsed = !!collapsedHouses[group.house];
+                    const groupNeeded = group.items.reduce((s, n) => s + Number(n.amount_needed || 0), 0);
+                    const groupRaised = group.items.reduce((s, n) => s + Number(n.amount_raised || 0), 0);
                     return (
-                      <div key={n.id} className="need-card">
-                        <div className="need-top">
-                          <div>
-                            <div className="need-house">{n.house}</div>
-                            <div className="need-desc">{n.description}</div>
-                            <div className="need-meta">
-                              Logged {new Date(n.date_logged).toLocaleDateString()}
-                              {n.source ? ` · ${n.source}` : ""}
+                      <div key={group.house} style={{marginBottom:20}}>
+                        <div
+                          onClick={() => toggleHouseCollapsed(group.house)}
+                          style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",padding:"8px 4px",borderBottom:`2px solid ${C.goldlt}`,marginBottom:isCollapsed?0:12}}
+                        >
+                          <div style={{display:"flex",alignItems:"center",gap:8}}>
+                            <span style={{fontSize:12,color:C.muted}}>{isCollapsed ? "▶" : "▼"}</span>
+                            <span style={{fontFamily:"'Playfair Display',serif",fontSize:16,color:C.navy}}>{group.house}</span>
+                            <span className="tag">{group.items.length} need{group.items.length !== 1 ? "s" : ""}</span>
+                          </div>
+                          <span style={{fontSize:12.5,color:C.muted}}>
+                            ${groupRaised.toLocaleString()} raised of ${groupNeeded.toLocaleString()}
+                          </span>
+                        </div>
+
+                        {!isCollapsed && group.items.map(n => {
+                          const pct = n.amount_needed > 0 ? Math.min(100, Math.round((n.amount_raised / n.amount_needed) * 100)) : 0;
+                          return (
+                            <div key={n.id} className="need-card">
+                              <div className="need-top">
+                                <div>
+                                  <div className="need-desc">{n.description}</div>
+                                  <div className="need-meta">
+                                    Logged {new Date(n.date_logged).toLocaleDateString()}
+                                    {n.source ? ` · ${n.source}` : ""}
+                                  </div>
+                                </div>
+                                <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                                  <span className={`tag ${n.status}`}>
+                                    {n.status === "fulfilled" ? "Fulfilled" : n.status === "partial" ? "Partially Funded" : "Open"}
+                                  </span>
+                                  <button className="btn btn-danger btn-sm" onClick={() => handleDeleteNeed(n.id)}>Delete</button>
+                                </div>
+                              </div>
+
+                              <div className="progress-track">
+                                <div className={`progress-fill ${n.status}`} style={{width: `${pct}%`}} />
+                              </div>
+                              <div className="need-amounts">
+                                <span>${Number(n.amount_raised).toLocaleString()} raised of ${Number(n.amount_needed).toLocaleString()}</span>
+                                <span>{pct}%</span>
+                              </div>
+
+                              {editingRaisedId === n.id ? (
+                                <div className="inline-edit">
+                                  <input type="number" value={editingRaisedValue} onChange={e => setEditingRaisedValue(e.target.value)} />
+                                  <button className="btn btn-teal btn-sm" onClick={() => saveEditRaised(n)}>Save</button>
+                                  <button className="btn btn-secondary btn-sm" onClick={() => setEditingRaisedId(null)}>Cancel</button>
+                                </div>
+                              ) : (
+                                <div style={{marginTop:10}}>
+                                  <button className="btn btn-secondary btn-sm" onClick={() => startEditRaised(n)}>Update Amount Raised</button>
+                                </div>
+                              )}
                             </div>
-                          </div>
-                          <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                            <span className={`tag ${n.status}`}>
-                              {n.status === "fulfilled" ? "Fulfilled" : n.status === "partial" ? "Partially Funded" : "Open"}
-                            </span>
-                            <button className="btn btn-danger btn-sm" onClick={() => handleDeleteNeed(n.id)}>Delete</button>
-                          </div>
-                        </div>
-
-                        <div className="progress-track">
-                          <div className={`progress-fill ${n.status}`} style={{width: `${pct}%`}} />
-                        </div>
-                        <div className="need-amounts">
-                          <span>${Number(n.amount_raised).toLocaleString()} raised of ${Number(n.amount_needed).toLocaleString()}</span>
-                          <span>{pct}%</span>
-                        </div>
-
-                        {editingRaisedId === n.id ? (
-                          <div className="inline-edit">
-                            <input type="number" value={editingRaisedValue} onChange={e => setEditingRaisedValue(e.target.value)} />
-                            <button className="btn btn-teal btn-sm" onClick={() => saveEditRaised(n)}>Save</button>
-                            <button className="btn btn-secondary btn-sm" onClick={() => setEditingRaisedId(null)}>Cancel</button>
-                          </div>
-                        ) : (
-                          <div style={{marginTop:10}}>
-                            <button className="btn btn-secondary btn-sm" onClick={() => startEditRaised(n)}>Update Amount Raised</button>
-                          </div>
-                        )}
+                          );
+                        })}
                       </div>
                     );
                   })
@@ -744,4 +801,3 @@ Keep both faith-centered and uplifting. No em dashes. No repeated phrases betwee
     </>
   );
 }
-
