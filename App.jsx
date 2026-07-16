@@ -182,7 +182,7 @@ export default function App() {
   const [needsFilterHouse, setNeedsFilterHouse] = useState("All");
   const [needsFilterStatus, setNeedsFilterStatus] = useState("All");
   const [needsYear, setNeedsYear] = useState(CURRENT_YEAR);
-  const [needsMonth, setNeedsMonth] = useState(-1); // -1 = All months
+  const [needsMonth, setNeedsMonth] = useState(CURRENT_MONTH); // defaults to current month, like Newsletter tab; click "All" to see everything
   const [collapsedHouses, setCollapsedHouses] = useState({});
   const [newNeed, setNewNeed] = useState({
     house: HOUSES[0], description: "", amount_needed: "", amount_raised: "0", source: "",
@@ -800,4 +800,4 @@ Keep both faith-centered and uplifting. No em dashes. No repeated phrases betwee
       </div>
     </>
   );
-}
+}  
