@@ -316,7 +316,7 @@ Keep both faith-centered and uplifting. No em dashes. No repeated phrases betwee
     e.target.value = "";
   }
   async function handleAddNeed() {
-    if (!newNeed.description || !newNeed.amount_needed) return;
+    if (!newNeed.description) return;
     setAddingNeed(true);
     // Use the year/month currently selected in the filter above, so a need added while
     // viewing "June" is actually logged as June — not always today's date.
@@ -656,8 +656,8 @@ Keep both faith-centered and uplifting. No em dashes. No repeated phrases betwee
                     value={newNeed.description} onChange={e => setNewNeed({...newNeed, description: e.target.value})} />
                   <div style={{display:"flex",gap:14,flexWrap:"wrap"}}>
                     <div style={{flex:"1 1 140px"}}>
-                      <label>Amount Needed ($)</label>
-                      <input type="number" placeholder="3000" value={newNeed.amount_needed}
+                      <label>Amount Needed ($) — optional</label>
+                      <input type="number" placeholder="Leave blank if amount is unknown" value={newNeed.amount_needed}
                         onChange={e => setNewNeed({...newNeed, amount_needed: e.target.value})} />
                     </div>
                     <div style={{flex:"1 1 140px"}}>
@@ -682,7 +682,7 @@ Keep both faith-centered and uplifting. No em dashes. No repeated phrases betwee
                     <input ref={needPhotoInputRef} type="file" accept="image/*" multiple style={{display:"none"}} onChange={handleNeedPhotoAdd} />
                   </div>
                   <div style={{marginTop:16}}>
-                    <button className="btn btn-primary" onClick={handleAddNeed} disabled={addingNeed || !newNeed.description || !newNeed.amount_needed}>
+                    <button className="btn btn-primary" onClick={handleAddNeed} disabled={addingNeed || !newNeed.description}>
                       {addingNeed ? "Adding..." : "+ Add Need"}
                     </button>
                   </div>
@@ -750,13 +750,21 @@ Keep both faith-centered and uplifting. No em dashes. No repeated phrases betwee
                                   {n.photos.map((p, i) => <img key={i} src={p} alt="" className="photo-thumb" />)}
                                 </div>
                               )}
-                              <div className="progress-track">
-                                <div className={`progress-fill ${n.status}`} style={{width: `${pct}%`}} />
-                              </div>
-                              <div className="need-amounts">
-                                <span>${Number(n.amount_raised).toLocaleString()} raised of ${Number(n.amount_needed).toLocaleString()}</span>
-                                <span>{pct}%</span>
-                              </div>
+                              {n.amount_needed > 0 ? (
+                                <>
+                                  <div className="progress-track">
+                                    <div className={`progress-fill ${n.status}`} style={{width: `${pct}%`}} />
+                                  </div>
+                                  <div className="need-amounts">
+                                    <span>${Number(n.amount_raised).toLocaleString()} raised of ${Number(n.amount_needed).toLocaleString()}</span>
+                                    <span>{pct}%</span>
+                                  </div>
+                                </>
+                              ) : (
+                                <div className="need-amounts" style={{marginTop:10}}>
+                                  <span className="tag" style={{fontStyle:"italic"}}>Amount not yet set{n.amount_raised > 0 ? ` · $${Number(n.amount_raised).toLocaleString()} raised so far` : ""}</span>
+                                </div>
+                              )}
                               {editingRaisedId === n.id ? (
                                 <div className="inline-edit">
                                   <input type="number" value={editingRaisedValue} onChange={e => setEditingRaisedValue(e.target.value)} />
@@ -784,6 +792,3 @@ Keep both faith-centered and uplifting. No em dashes. No repeated phrases betwee
     </>
   );
 }
-
-
-
