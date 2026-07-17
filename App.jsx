@@ -3,7 +3,6 @@ import {
   loadEntry, saveEntry, loadAllForMonth, getMonthsWithData,
   loadNeeds, addNeed, updateNeed, deleteNeed,
 } from "./supabase.js";
-
 const HOUSES = [
   "Joshua House",
   "Esther House",
@@ -12,18 +11,14 @@ const HOUSES = [
   "EMBO Kids",
   "House of Hope",
 ];
-
 const MONTHS = [
   "January","February","March","April","May","June",
   "July","August","September","October","November","December"
 ];
-
 const now = new Date();
 const CURRENT_YEAR = now.getFullYear();
 const CURRENT_MONTH = now.getMonth();
-
 const ANTHROPIC_KEY = import.meta.env.VITE_ANTHROPIC_KEY;
-
 async function callClaude(systemPrompt, userPrompt) {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -42,7 +37,15 @@ async function callClaude(systemPrompt, userPrompt) {
   const d = await res.json();
   return d.content?.map(b => b.text || "").join("") || "";
 }
-
+// Parse a "YYYY-MM-DD" string as a LOCAL calendar date, not UTC.
+// `new Date("2026-06-01")` is parsed as UTC midnight by the JS spec, which
+// silently rolls back to the previous day (and sometimes previous month) in
+// any timezone behind UTC. This helper avoids that entirely.
+function parseLocalDate(dateStr) {
+  if (!dateStr) return null;
+  const [y, m, d] = dateStr.slice(0, 10).split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
 // ── palette ───────────────────────────────────────────────────────────────────
 const C = {
   cream:  "#FDF8F2",
@@ -59,7 +62,6 @@ const C = {
   white:  "#FFFFFF",
   danger: "#C0392B",
 };
-
 const css = `
   @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Inter:wght@400;500;600&display=swap');
   *{box-sizing:border-box;margin:0;padding:0}
@@ -152,7 +154,6 @@ const css = `
   .inline-edit{display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap}
   .inline-edit input{width:110px}
 `;
-
 export default function App() {
   const [activeHouse, setActiveHouse] = useState(HOUSES[0]);
   const [activeTab, setActiveTab] = useState("log");
@@ -169,13 +170,11 @@ export default function App() {
   const [copyFlash, setCopyFlash] = useState("");
   const [statusMsg, setStatusMsg] = useState("");
   const photoInputRef = useRef();
-
   const [notes, setNotes] = useState("");
   const [highlights, setHighlights] = useState("");
   const [prayerPoints, setPrayerPoints] = useState("");
   const [author, setAuthor] = useState("");
   const [photos, setPhotos] = useState([]);
-
   // ── Needs Tracker state ──────────────────────────────────────────────────
   const [needs, setNeeds] = useState([]);
   const [needsLoading, setNeedsLoading] = useState(false);
@@ -185,27 +184,24 @@ export default function App() {
   const [needsMonth, setNeedsMonth] = useState(CURRENT_MONTH); // defaults to current month, like Newsletter tab; click "All" to see everything
   const [collapsedHouses, setCollapsedHouses] = useState({});
   const [newNeed, setNewNeed] = useState({
-    house: HOUSES[0], description: "", amount_needed: "", amount_raised: "0", source: "",
+    house: HOUSES[0], description: "", amount_needed: "", amount_raised: "0", source: "", photos: [],
   });
   const [addingNeed, setAddingNeed] = useState(false);
   const [editingRaisedId, setEditingRaisedId] = useState(null);
   const [editingRaisedValue, setEditingRaisedValue] = useState("");
   const needDescRef = useRef();
-
+  const needPhotoInputRef = useRef();
   useEffect(() => {
     setNlOutput(""); setSmOutput("");
     loadCurrentEntry();
     loadMonthsWithData();
   }, [activeHouse, selectedYear, selectedMonth]);
-
   useEffect(() => {
     if (activeTab === "newsletter") loadAllForNewsletter();
   }, [activeTab, selectedYear, selectedMonth]);
-
   useEffect(() => {
     if (activeTab === "needs") loadNeedsList();
   }, [activeTab]);
-
   async function loadCurrentEntry() {
     setLoadingEntry(true);
     const d = await loadEntry(activeHouse, selectedYear, selectedMonth);
@@ -222,12 +218,10 @@ export default function App() {
     }
     setLoadingEntry(false);
   }
-
   async function loadMonthsWithData() {
     const months = await getMonthsWithData(activeHouse, selectedYear);
     setMonthsWithData(months);
   }
-
   async function handleSave() {
     setSaving(true);
     const ok = await saveEntry(activeHouse, selectedYear, selectedMonth, {
@@ -243,7 +237,6 @@ export default function App() {
     loadMonthsWithData();
     loadCurrentEntry();
   }
-
   function handlePhotoAdd(e) {
     const files = Array.from(e.target.files);
     files.forEach(f => {
@@ -253,49 +246,40 @@ export default function App() {
     });
     e.target.value = "";
   }
-
   async function generateNewsletter() {
     if (!notes && !highlights) return;
     setGenerating(true); setNlOutput("");
     const prompt = `You are writing for the Hope For The Nations nonprofit newsletter.
-
 House: ${activeHouse}
 Month: ${MONTHS[selectedMonth]} ${selectedYear}
 Updates / Notes: ${notes}
 Highlights: ${highlights}
 Prayer Points: ${prayerPoints}
-
 Write a warm, faith-filled newsletter paragraph (3–5 sentences) about this home for the month. Use a compassionate, ministry voice. Flowing prose only — no bullet points, no em dashes.`;
     const out = await callClaude("You write warm, ministry-focused newsletter content for a Christian nonprofit.", prompt);
     setNlOutput(out);
     setGenerating(false);
   }
-
   async function generateSocial() {
     if (!notes && !highlights) return;
     setGenerating(true); setSmOutput("");
     const prompt = `You are writing a Facebook/Instagram caption for Hope For The Nations, a Christian nonprofit.
-
 House: ${activeHouse}
 Month: ${MONTHS[selectedMonth]} ${selectedYear}
 Updates / Notes: ${notes}
 Highlights: ${highlights}
-
 Write two versions:
 1. Facebook caption (2–3 sentences, warm and storytelling, ends with a call to prayer or support)
 2. Instagram caption (shorter, punchy, 1–2 sentences + 3–5 relevant hashtags)
-
 Keep both faith-centered and uplifting. No em dashes. No repeated phrases between the two.`;
     const out = await callClaude("You write social media content for a Christian nonprofit.", prompt);
     setSmOutput(out);
     setGenerating(false);
   }
-
   async function loadAllForNewsletter() {
     const result = await loadAllForMonth(selectedYear, selectedMonth);
     setAllNlData(result);
   }
-
   async function generateFullNewsletter() {
     setGenerating(true); setNlOutput("");
     const sections = Object.entries(allNlData);
@@ -310,13 +294,11 @@ Keep both faith-centered and uplifting. No em dashes. No repeated phrases betwee
     setNlOutput(out);
     setGenerating(false);
   }
-
   function copyText(txt) {
     navigator.clipboard.writeText(txt);
     setCopyFlash("Copied!");
     setTimeout(() => setCopyFlash(""), 2000);
   }
-
   // ── Needs Tracker handlers ───────────────────────────────────────────────
   async function loadNeedsList() {
     setNeedsLoading(true);
@@ -324,21 +306,36 @@ Keep both faith-centered and uplifting. No em dashes. No repeated phrases betwee
     setNeeds(data);
     setNeedsLoading(false);
   }
-
+  function handleNeedPhotoAdd(e) {
+    const files = Array.from(e.target.files);
+    files.forEach(f => {
+      const reader = new FileReader();
+      reader.onload = ev => setNewNeed(prev => ({ ...prev, photos: [...prev.photos, ev.target.result] }));
+      reader.readAsDataURL(f);
+    });
+    e.target.value = "";
+  }
   async function handleAddNeed() {
     if (!newNeed.description || !newNeed.amount_needed) return;
     setAddingNeed(true);
+    // Use the year/month currently selected in the filter above, so a need added while
+    // viewing "June" is actually logged as June — not always today's date.
+    const loggedDate = needsMonth === -1
+      ? new Date().toISOString().slice(0, 10)
+      : `${needsYear}-${String(needsMonth + 1).padStart(2, "0")}-01`;
     const ok = await addNeed({
       house: newNeed.house,
       description: newNeed.description,
       amount_needed: Number(newNeed.amount_needed) || 0,
       amount_raised: Number(newNeed.amount_raised) || 0,
       source: newNeed.source || null,
+      date_logged: loggedDate,
+      photos: newNeed.photos,
     });
     if (ok) {
       // Keep the same house selected so logging several needs for one house in a row is fast —
-      // only the description/amount/source fields clear.
-      setNewNeed(prev => ({ house: prev.house, description: "", amount_needed: "", amount_raised: "0", source: "" }));
+      // only the description/amount/source/photos fields clear.
+      setNewNeed(prev => ({ house: prev.house, description: "", amount_needed: "", amount_raised: "0", source: "", photos: [] }));
       setStatusMsg("✓ Need added");
       setTimeout(() => setStatusMsg(""), 2500);
       loadNeedsList();
@@ -349,12 +346,10 @@ Keep both faith-centered and uplifting. No em dashes. No repeated phrases betwee
     }
     setAddingNeed(false);
   }
-
   function startEditRaised(need) {
     setEditingRaisedId(need.id);
     setEditingRaisedValue(String(need.amount_raised));
   }
-
   async function saveEditRaised(need) {
     const ok = await updateNeed(need.id, {
       house: need.house,
@@ -366,34 +361,29 @@ Keep both faith-centered and uplifting. No em dashes. No repeated phrases betwee
     setEditingRaisedId(null);
     if (ok) loadNeedsList();
   }
-
   async function handleDeleteNeed(id) {
     const ok = await deleteNeed(id);
     if (ok) loadNeedsList();
   }
-
   const filteredNeeds = needs.filter(n => {
     if (needsFilterHouse !== "All" && n.house !== needsFilterHouse) return false;
     if (needsFilterStatus !== "All" && n.status !== needsFilterStatus) return false;
-    const logged = new Date(n.date_logged);
+    const logged = parseLocalDate(n.date_logged);
+    if (!logged) return false;
     if (logged.getFullYear() !== needsYear) return false;
     if (needsMonth !== -1 && logged.getMonth() !== needsMonth) return false;
     return true;
   });
-
   const groupedNeeds = HOUSES.map(h => ({
     house: h,
     items: filteredNeeds.filter(n => n.house === h),
   })).filter(g => g.items.length > 0);
-
   function toggleHouseCollapsed(house) {
     setCollapsedHouses(prev => ({ ...prev, [house]: !prev[house] }));
   }
-
   const totalNeeded = filteredNeeds.reduce((s, n) => s + Number(n.amount_needed || 0), 0);
   const totalRaised = filteredNeeds.reduce((s, n) => s + Number(n.amount_raised || 0), 0);
   const openCount = filteredNeeds.filter(n => n.status !== "fulfilled").length;
-
   return (
     <>
       <style>{css}</style>
@@ -405,7 +395,6 @@ Keep both faith-centered and uplifting. No em dashes. No repeated phrases betwee
             <div className="header-sub">House Updates Hub</div>
           </div>
         </div>
-
         <div className="body">
           <div className="sidebar">
             <div className="sidebar-section">Our Homes</div>
@@ -426,7 +415,6 @@ Keep both faith-centered and uplifting. No em dashes. No repeated phrases betwee
               💰 Needs Tracker
             </div>
           </div>
-
           <div className="main">
             {activeTab !== "newsletter" && activeTab !== "needs" && (
               <>
@@ -454,7 +442,6 @@ Keep both faith-centered and uplifting. No em dashes. No repeated phrases betwee
                 </div>
               </>
             )}
-
             {/* LOG TAB */}
             {activeTab === "log" && (
               <div className="card">
@@ -463,23 +450,18 @@ Keep both faith-centered and uplifting. No em dashes. No repeated phrases betwee
                   {entryData && <span className="tag filled">Saved</span>}
                   {entryData?.author && <span className="author-tag">by {entryData.author}</span>}
                 </div>
-
                 {loadingEntry ? (
                   <div className="loading"><div className="dot"/><div className="dot"/><div className="dot"/> Loading...</div>
                 ) : (
                   <>
                     <label>Your Name</label>
                     <input type="text" placeholder="Who is logging this update?" value={author} onChange={e => setAuthor(e.target.value)} />
-
                     <label>Updates / Monthly Notes</label>
                     <textarea placeholder="What happened this month? Residents, activities, needs, changes..." value={notes} onChange={e => setNotes(e.target.value)} rows={5} />
-
                     <label>Highlights & Praise Reports</label>
                     <textarea placeholder="Answered prayers, milestones, special moments..." value={highlights} onChange={e => setHighlights(e.target.value)} rows={3} />
-
                     <label>Prayer Points</label>
                     <textarea placeholder="Specific needs for prayer this month..." value={prayerPoints} onChange={e => setPrayerPoints(e.target.value)} rows={2} />
-
                     <label>Photos</label>
                     <div className="photo-strip">
                       {photos.map((p, i) => (
@@ -492,7 +474,6 @@ Keep both faith-centered and uplifting. No em dashes. No repeated phrases betwee
                       <div className="photo-add" onClick={() => photoInputRef.current.click()}>+</div>
                       <input ref={photoInputRef} type="file" accept="image/*" multiple style={{display:"none"}} onChange={handlePhotoAdd} />
                     </div>
-
                     <div style={{marginTop:18,display:"flex",gap:10,flexWrap:"wrap"}}>
                       <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
                         {saving ? "Saving..." : "💾 Save Entry"}
@@ -501,9 +482,7 @@ Keep both faith-centered and uplifting. No em dashes. No repeated phrases betwee
                         {generating ? "Generating..." : "📰 Draft Newsletter Para"}
                       </button>
                     </div>
-
                     {generating && <div className="loading" style={{marginTop:12}}><div className="dot"/><div className="dot"/><div className="dot"/> Writing...</div>}
-
                     {nlOutput && (
                       <div style={{marginTop:14}}>
                         <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -518,7 +497,6 @@ Keep both faith-centered and uplifting. No em dashes. No repeated phrases betwee
                 )}
               </div>
             )}
-
             {/* SOCIAL TAB */}
             {activeTab === "social" && (
               <div className="card">
@@ -563,7 +541,6 @@ Keep both faith-centered and uplifting. No em dashes. No repeated phrases betwee
                 )}
               </div>
             )}
-
             {/* NEWSLETTER TAB */}
             {activeTab === "newsletter" && (
               <div>
@@ -579,7 +556,6 @@ Keep both faith-centered and uplifting. No em dashes. No repeated phrases betwee
                     </button>
                   ))}
                 </div>
-
                 <div className="card">
                   <div className="card-title">📰 Newsletter — {MONTHS[selectedMonth]} {selectedYear}</div>
                   {Object.keys(allNlData).length === 0 ? (
@@ -633,14 +609,12 @@ Keep both faith-centered and uplifting. No em dashes. No repeated phrases betwee
                 </div>
               </div>
             )}
-
             {/* NEEDS TRACKER TAB */}
             {activeTab === "needs" && (
               <div>
                 <div className="card-title" style={{marginBottom:16}}>
                   💰 Needs Tracker <span>· {needsMonth === -1 ? `all of ${needsYear}` : `${MONTHS[needsMonth]} ${needsYear}`}</span>
                 </div>
-
                 <div className="year-nav" style={{marginBottom:14}}>
                   <button className="year-arrow" onClick={() => setNeedsYear(y => y - 1)}>‹</button>
                   <span className="year-label">{needsYear}</span>
@@ -654,7 +628,6 @@ Keep both faith-centered and uplifting. No em dashes. No repeated phrases betwee
                     </button>
                   ))}
                 </div>
-
                 <div className="needs-summary">
                   <div className="summary-stat">
                     <div className="summary-stat-label">Total Needed</div>
@@ -669,18 +642,18 @@ Keep both faith-centered and uplifting. No em dashes. No repeated phrases betwee
                     <div className="summary-stat-value">{openCount}</div>
                   </div>
                 </div>
-
                 <div className="card">
                   <div className="card-title">Add a Need</div>
+                  <div style={{fontSize:12,color:C.muted,marginTop:-6,marginBottom:10}}>
+                    Will be logged under <strong>{needsMonth === -1 ? "today's date" : `${MONTHS[needsMonth]} ${needsYear}`}</strong> — change the month tabs above to log it elsewhere.
+                  </div>
                   <label>House</label>
                   <select value={newNeed.house} onChange={e => setNewNeed({...newNeed, house: e.target.value})}>
                     {HOUSES.map(h => <option key={h} value={h}>{h}</option>)}
                   </select>
-
                   <label>Description</label>
                   <input ref={needDescRef} type="text" placeholder="e.g. Bricks, brickforce, river sand and cement to window level"
                     value={newNeed.description} onChange={e => setNewNeed({...newNeed, description: e.target.value})} />
-
                   <div style={{display:"flex",gap:14,flexWrap:"wrap"}}>
                     <div style={{flex:"1 1 140px"}}>
                       <label>Amount Needed ($)</label>
@@ -693,18 +666,27 @@ Keep both faith-centered and uplifting. No em dashes. No repeated phrases betwee
                         onChange={e => setNewNeed({...newNeed, amount_raised: e.target.value})} />
                     </div>
                   </div>
-
                   <label>Source (optional)</label>
                   <input type="text" placeholder="e.g. WhatsApp update, June 2026"
                     value={newNeed.source} onChange={e => setNewNeed({...newNeed, source: e.target.value})} />
-
+                  <label>Photos (optional)</label>
+                  <div className="photo-strip">
+                    {newNeed.photos.map((p, i) => (
+                      <div key={i} style={{position:"relative"}}>
+                        <img src={p} alt="" className="photo-thumb" />
+                        <button onClick={() => setNewNeed(prev => ({...prev, photos: prev.photos.filter((_,j) => j!==i)}))}
+                          style={{position:"absolute",top:-6,right:-6,background:C.danger,color:"#fff",border:"none",borderRadius:"50%",width:18,height:18,fontSize:11,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+                      </div>
+                    ))}
+                    <div className="photo-add" onClick={() => needPhotoInputRef.current.click()}>+</div>
+                    <input ref={needPhotoInputRef} type="file" accept="image/*" multiple style={{display:"none"}} onChange={handleNeedPhotoAdd} />
+                  </div>
                   <div style={{marginTop:16}}>
                     <button className="btn btn-primary" onClick={handleAddNeed} disabled={addingNeed || !newNeed.description || !newNeed.amount_needed}>
                       {addingNeed ? "Adding..." : "+ Add Need"}
                     </button>
                   </div>
                 </div>
-
                 <div className="filter-row">
                   <select style={{width:"auto"}} value={needsFilterHouse} onChange={e => setNeedsFilterHouse(e.target.value)}>
                     <option value="All">All Houses</option>
@@ -717,7 +699,6 @@ Keep both faith-centered and uplifting. No em dashes. No repeated phrases betwee
                     <option value="fulfilled">Fulfilled</option>
                   </select>
                 </div>
-
                 {needsLoading ? (
                   <div className="loading"><div className="dot"/><div className="dot"/><div className="dot"/> Loading needs...</div>
                 ) : groupedNeeds.length === 0 ? (
@@ -745,7 +726,6 @@ Keep both faith-centered and uplifting. No em dashes. No repeated phrases betwee
                             ${groupRaised.toLocaleString()} raised of ${groupNeeded.toLocaleString()}
                           </span>
                         </div>
-
                         {!isCollapsed && group.items.map(n => {
                           const pct = n.amount_needed > 0 ? Math.min(100, Math.round((n.amount_raised / n.amount_needed) * 100)) : 0;
                           return (
@@ -754,7 +734,7 @@ Keep both faith-centered and uplifting. No em dashes. No repeated phrases betwee
                                 <div>
                                   <div className="need-desc">{n.description}</div>
                                   <div className="need-meta">
-                                    Logged {new Date(n.date_logged).toLocaleDateString()}
+                                    Logged {parseLocalDate(n.date_logged)?.toLocaleDateString()}
                                     {n.source ? ` · ${n.source}` : ""}
                                   </div>
                                 </div>
@@ -765,7 +745,11 @@ Keep both faith-centered and uplifting. No em dashes. No repeated phrases betwee
                                   <button className="btn btn-danger btn-sm" onClick={() => handleDeleteNeed(n.id)}>Delete</button>
                                 </div>
                               </div>
-
+                              {n.photos?.length > 0 && (
+                                <div className="photo-strip">
+                                  {n.photos.map((p, i) => <img key={i} src={p} alt="" className="photo-thumb" />)}
+                                </div>
+                              )}
                               <div className="progress-track">
                                 <div className={`progress-fill ${n.status}`} style={{width: `${pct}%`}} />
                               </div>
@@ -773,7 +757,6 @@ Keep both faith-centered and uplifting. No em dashes. No repeated phrases betwee
                                 <span>${Number(n.amount_raised).toLocaleString()} raised of ${Number(n.amount_needed).toLocaleString()}</span>
                                 <span>{pct}%</span>
                               </div>
-
                               {editingRaisedId === n.id ? (
                                 <div className="inline-edit">
                                   <input type="number" value={editingRaisedValue} onChange={e => setEditingRaisedValue(e.target.value)} />
@@ -800,4 +783,7 @@ Keep both faith-centered and uplifting. No em dashes. No repeated phrases betwee
       </div>
     </>
   );
-}  
+}
+
+
+
